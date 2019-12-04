@@ -1,6 +1,5 @@
 import { createMock } from '@golevelup/nestjs-testing';
 import { JwtService } from '@nestjs/jwt';
-import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
 import { of } from 'rxjs';
 
@@ -13,6 +12,8 @@ import { GoogleSub } from './models/google.payload';
 const passVal = 'Pa$$w0rd';
 const badPassVal = 'Passw0rd';
 const email = 'test@test.com';
+
+const A = <T>(impl: Partial<T>) => impl as T;
 
 const mockGoogleUser: GoogleUser = {
   id: 'USR-id',
@@ -70,47 +71,38 @@ const googleSubscriber = (
 
 describe('AuthService', () => {
   let service: AuthService;
-  let module: TestingModule;
+  let userService: UserService;
+  let googleService: GoogleUserService;
 
   beforeEach(async () => {
-    module = await Test.createTestingModule({
-      providers: [
-        AuthService,
-        {
-          provide: UserService,
-          useValue: {
-            getByEmail: jest.fn().mockReturnValue(
-              of({
-                id: 'USR-TEST',
-                email,
-                role: ['player'],
-                password: passVal,
-              }),
-            ),
-            insertUser: jest.fn().mockReturnValue(
-              of({
-                id: 'USR-TEST',
-              }),
-            ),
-          },
-        },
-        {
-          provide: GoogleUserService,
-          useValue: {
-            getByGoogleId: jest.fn().mockReturnValue(of({})),
-            createNewGoogleUser: jest.fn().mockReturnValue(of({})),
-          },
-        },
-        {
-          provide: JwtService,
-          useValue: {
-            sign: jest.fn().mockReturnValue('token'),
-          },
-        },
-      ],
-    }).compile();
+    userService = A<UserService>({
+      getByEmail: jest.fn().mockReturnValue(
+        of({
+          id: 'USR-TEST',
+          email,
+          role: ['player'],
+          password: passVal,
+        }),
+      ),
+      insertUser: jest.fn().mockReturnValue(
+        of({
+          id: 'USR-TEST',
+        }),
+      ),
+    });
 
-    service = module.get<AuthService>(AuthService);
+    googleService = A<GoogleUserService>({
+      getByGoogleId: jest.fn().mockReturnValue(of({})),
+      createNewGoogleUser: jest.fn().mockReturnValue(of({})),
+    });
+
+    service = new AuthService(
+      userService,
+      A<JwtService>({
+        sign: jest.fn().mockReturnValue('token'),
+      }),
+      googleService,
+    );
   });
 
   it('should be defined', () => {
@@ -153,7 +145,6 @@ describe('AuthService', () => {
         lastName: 'McTesting',
       };
       it('should allow a user to signup', (done) => {
-        const userService = module.get<UserService>(UserService);
         jest
           .spyOn(userService, 'getByEmail')
           .mockReturnValueOnce(of(undefined));
@@ -178,15 +169,10 @@ describe('AuthService', () => {
   });
   describe('Google Strategy', () => {
     describe('findOrCreateGoogleUser', () => {
-      let googleService: GoogleUserService;
-
-      beforeEach(() => {
-        googleService = module.get<GoogleUserService>(GoogleUserService);
-      });
-
       afterEach(() => {
         jest.clearAllMocks();
       });
+
       it('should find and return a Google User', (done) => {
         const getGoogleSpy = jest
           .spyOn(googleService, 'getByGoogleId')
